@@ -24,10 +24,10 @@ class Game:
 				db.conn.commit()
 				
 		except InternalError as e:
-			print("INSERT INTO games (id, date) VALUES ("+str(self.id)+", "+str(self.date)+")")
-
 			print("Internal error!")
 			print(e)
 			db.conn.rollback()
-
+		except:
+			print("Mystery error!")
+			db.conn.rollback()
 		return self

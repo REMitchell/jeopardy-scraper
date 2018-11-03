@@ -13,7 +13,6 @@ class Category:
 		try:
 			db.cur.execute("SELECT * FROM categories WHERE name = %s AND gameId = %s AND round = %s", (self.name, int(self.game.id), int(self.round)))
 			if db.cur.rowcount == 0:
-				print("INSERT INTO categories (gameId, round, name) VALUES ("+str(self.game.id)+", "+str(self.round)+", "+str(self.name)+")")
 				db.cur.execute("INSERT INTO categories (gameId, round, name) VALUES (%s, %s, %s)", (int(self.game.id), int(self.round), self.name))
 				db.conn.commit()
 				self.id = db.cur.lastrowid
@@ -21,14 +20,10 @@ class Category:
 				self.id = db.cur.fetchall()[0]["id"]
 				
 		except InternalError as e:
-			print("INSERT INTO categories (gameId, round, name) VALUES ("+str(self.game.id)+", "+str(self.round)+", "+self.name+")")
-
 			print("Internal error!")
 			print(e)
 			db.conn.rollback()
 		except:
-			print("INSERT INTO categories (gameId, round, name) VALUES ("+str(self.game.id)+", "+str(self.round)+", "+self.name+")")
-
 			print("Mystery error!")
 			print(e)
 			db.conn.rollback()

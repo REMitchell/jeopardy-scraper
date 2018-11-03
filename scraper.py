@@ -1,13 +1,9 @@
 from urllib.request import urlopen
 from urllib.error import HTTPError
-import html
 from bs4 import BeautifulSoup
 import pymysql
 import requests
-
 import re
-
-from pymysql.err import InternalError
 
 from answer import Answer
 from question import Question
@@ -16,16 +12,12 @@ from database import Database
 from player import Player
 from score import Score
 from game import Game
-from html import unescape
+
 
 class JeopardyScraper:
-	db = None
-	start = None
 
 	def __init__(self):
-		global db
-		global start
-		db = Database()
+		self.db = Database()
 		start = False
 
 	def safeGet(self, url, jsonObj=False):
@@ -33,7 +25,6 @@ class JeopardyScraper:
 		headers = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/48.0.2564.103 Safari/537.36"}
 		try:
 			r = requests.get(url, headers=headers)
-			#html = urlopen(url)
 		except HTTPError as e:
 			print("HTTP error "+str(e))
 			return None
@@ -68,8 +59,6 @@ class JeopardyScraper:
 	#"clue" is the beautifulsoup clue object
 	#i is the round number
 	def extractClue(self, clue, game, categories, i):
-		global db
-
 		clueDiv = clue.find("div")
 		clueText = clue.find("td",{"class":"clue_text"}).get_text()
 		
@@ -85,14 +74,11 @@ class JeopardyScraper:
 		
 		question = clueDiv.attrs["onmouseout"]
 		answer = clueDiv.attrs["onmouseover"]
-		#print("Mouseover content:")
-		#print(answer)
 
 		answer = answer[7:-1].split('\', \'')
 
 		#Get rid of the quotes surrounding the question
-		#print("Cleaned content:")
-		#print(str(answer[2][:-1]))
+
 		answerText = answer[2][:-1].replace("\\", "")
 		answerObj = BeautifulSoup(str(answerText), "lxml")
 		#Weird problem: Can't get an answer for these...
@@ -119,7 +105,7 @@ class JeopardyScraper:
 				amount = self.formatDollars(clue.find("td",{"class":"clue_value"}).get_text())
 			
 		question = Question(None, game, i, category, row, order, clueText, answerText, amount, notes)
-		question = question.save(db)
+		question = question.save(self.db)
 
 
 		#Get the answers
@@ -128,19 +114,17 @@ class JeopardyScraper:
 			name = answerObj.find("td", {"class":"right"}).get_text()
 			rightPlayer = self.byShortname(game.players, name)
 			answer = Answer(question, rightPlayer, "true")
-			answer.save(db)
+			answer.save(self.db)
 
 		wrongs = answerObj.findAll("td", {"class":"wrong"})
 		for wrong in wrongs:
 			if wrong.get_text().lower() != "triple stumper":
-				#(self, id, question, player, correct)
 				wrongPlayer = self.byShortname(game.players, wrong.get_text())
 				answer = Answer(question, wrongPlayer, "false")
-				answer.save(db)
+				answer.save(self.db)
 
 	#Gets categories, questions and answers from the game boards
 	def getQuestions(self, pageObj, game):
-		global db
 		rounds = pageObj.findAll("table",{"class":"round"})
 		categories =[]
 		if len(rounds) != 2:
@@ -150,9 +134,8 @@ class JeopardyScraper:
 			round = rounds[i-1]
 			categoryElems = round.findAll("td",{"class":"category_name"})
 			for category in categoryElems:
-				#(self, id, game, roundNum, name):
 				categoryObj = Category(None, game, i, category.get_text())
-				categoryObj = categoryObj.save(db)
+				categoryObj = categoryObj.save(self.db)
 				categories.append(categoryObj)
 
 			clues = round.findAll("td",{"class":"clue"})
@@ -165,7 +148,7 @@ class JeopardyScraper:
 			return
 		finalCategoryName = final.find("td",{"class":"category_name"}).get_text()
 		finalCategory = Category(None, game, 3, finalCategoryName)
-		finalCategory = finalCategory.save(db)
+		finalCategory = finalCategory.save(self.db)
 		self.extractClue(final, game, finalCategory, 3) 
 
 	def getTableScores(self, pageObj, title, coryat=False):
@@ -202,49 +185,29 @@ class JeopardyScraper:
 
 
 	def saveResults(self, pageObj, game, players):
-		global db
 		commercialBreak = self.getTableScores(pageObj, "Scores at the first commercial break")
 		round1 = self.getTableScores(pageObj, "Scores at the end of the Jeopardy")
 		round2 = self.getTableScores(pageObj, "Scores at the end of the Double Jeopardy")
 		final = self.getTableScores(pageObj, "Final scores:")
 		coryat = self.getTableScores(pageObj, "Coryat scores:", True)
-		#def __init__(self, id, game, player, breakScore, round1, round2, final, coryat):
 		for i in range(0,3):
 			score = Score(None, game, players[i], commercialBreak[i], round1[i], round2[i], final[i], coryat[i])
-			score.save(db)
-		#tables = pageObj.findAll("table", attrs={})
-		#tables = pageObj.findAll(lambda tag: tag.name == "table" and len(tag.attrs) == 0)
-
+			score.save(self.db)
 
 	def scrapeGame(self, url):
-		global db
-		global start
-
 		if "game_id=" not in url:
 			print("Invalid URL "+url)
 			return
 		if(url.startswith("showgame")):
 			url = "http://www.j-archive.com/"+url
 
-		skip = ["4271"]
 		gameId = url.split("game_id=")[1]
 
-		if gameId in skip:
-			print("Skipping: "+str(gameId))
-			return
-		if gameId == "2063":
-			start = True
-
-		if not start:
-			print("Skipping "+str(gameId)+"!")
-			return
-
 		bsObj = self.safeGet(url)
-		#Show #153 - Wednesday, April 10, 1985
 		date = bsObj.h1.get_text()
 		date = date[date.index(',')+2:]
 		game = Game(gameId, date)
-		game.save(db)
+		game.save(self.db)
 
 		contestants = bsObj.findAll("p", {"class":"contestants"})
 		if len(contestants) != 3:
@@ -274,18 +237,17 @@ class JeopardyScraper:
 		for i in range(0,3):
 
 			players[i].setShortname(nicknames[i].get_text())
-			players[i].save(db)
+			players[i].save(self.db)
 
 		game.setPlayers(players)
 		self.saveResults(bsObj, game, players)
-		#getQuestions(self, pageObj, game):
 		self.getQuestions(bsObj, game)
 		print("Done with "+str(game.id))
 
 
 
 	def getGames(self):
-		for i in range(24,33):
+		for i in range(17,36):
 			html = urlopen("http://j-archive.com/showseason.php?season="+str(i))
 			bsObj = BeautifulSoup(html, "lxml")
 			table = bsObj.table
