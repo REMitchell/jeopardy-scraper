@@ -1,7 +1,7 @@
 from urllib.request import urlopen
 from urllib.error import HTTPError
+from urllib.error import URLError
 from bs4 import BeautifulSoup
-import pymysql
 import requests
 import re
 
@@ -18,7 +18,8 @@ class JeopardyScraper:
 
 	def __init__(self):
 		self.db = Database()
-		start = False
+		self.waitingOnGame = 5869
+
 
 	def safeGet(self, url, jsonObj=False):
 		session = requests.Session()
@@ -202,17 +203,22 @@ class JeopardyScraper:
 			url = "http://www.j-archive.com/"+url
 
 		gameId = url.split("game_id=")[1]
-
-		bsObj = self.safeGet(url)
-		date = bsObj.h1.get_text()
-		date = date[date.index(',')+2:]
-		game = Game(gameId, date)
-		game.save(self.db)
-
-		contestants = bsObj.findAll("p", {"class":"contestants"})
-		if len(contestants) != 3:
-			print("Weirdness going on with contestants in game "+str(game.id))
+		if int(gameId) == self.waitingOnGame:
+			self.waitingOnGame = False
+		if self.waitingOnGame:
+			print("SKIPPING gameId")
 			return
+
+		if not self.waitingOnGame:
+			bsObj = self.safeGet(url)
+			date = bsObj.h1.get_text()
+			date = date[date.index(',')+2:]
+			game = Game(gameId, date)
+			game.save(self.db)
+			contestants = bsObj.findAll("p", {"class":"contestants"})
+			if len(contestants) != 3:
+				print("Weirdness going on with contestants in game "+str(game.id))
+				return
 
 		players = []
 		for contestant in contestants:
@@ -244,10 +250,8 @@ class JeopardyScraper:
 		self.getQuestions(bsObj, game)
 		print("Done with "+str(game.id))
 
-
-
 	def getGames(self):
-		for i in range(17,36):
+		for i in range(30,36):
 			html = urlopen("http://j-archive.com/showseason.php?season="+str(i))
 			bsObj = BeautifulSoup(html, "lxml")
 			table = bsObj.table

@@ -29,8 +29,9 @@ class Question:
 			print("Internal error!")
 			print(e)
 			db.conn.rollback()
-		except:
+		except e:
 			print("Mystery error!")
+			print(e)
 			db.conn.rollback()
 		return self
 
